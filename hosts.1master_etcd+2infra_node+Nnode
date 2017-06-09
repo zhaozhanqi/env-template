@@ -1,0 +1,78 @@
+hosts:
+  # create opts passed to service methods we have
+  common_launch_opts:
+    # this is default service name, individual hosts can override
+    service_name: <%= iaas_name %>
+    # prefix to use for new cloud instances names
+    name_prefix: <%= defined?(instances_name_prefix) ? instances_name_prefix : "aosqe-#{rand_str(3, :dns)}-" %>
+    <%= iaas_name %>:
+<% if "#{iaas_name}" == "GCE" %>
+      <%= "boot_disk_opts: { initialize_params: { img_snap_name: #{image} } }" %>
+      <%= "user_data: http://git.app.eng.bos.redhat.com/git/openshift-misc.git/plain/v3_non-vpn/root_sudo_hostname-gce.yml" %>
+      <%= defined?(vm_type) ? "instance_opts: { machine_type_name: #{vm_type} }" : "" %>
+      <%= defined?(zone)? "zone: #{zone}" : "" %>
+<% elsif "#{iaas_name}" == "AWS" %>
+      <%= defined?(ec2_tags) ? "tags: { 'KubernetesCluster': '#{ec2_tags}' }" : "tags: { 'KubernetesCluster': 'aosqe-#{rand_str(3, :dns)}' }" %>
+      <%= "image: #{image}" %>
+      <%= "user_data: http://git.app.eng.bos.redhat.com/git/openshift-misc.git/plain/v3_non-vpn/root_and_sudo_sanity.yml" %>
+      <%= "instance_initiated_shutdown_behavior: terminate" %>
+      <%= defined?(vm_type) ? "instance_type: #{vm_type}" : "" %>
+      <%= defined?(zone)? "placement: { availability_zone: \"#{zone}\" }" : "" %>
+      <%= defined?(ec2_subnet_id) ? "subnet_id: \"#{ec2_subnet_id}\"" : "" %>
+      <%= defined?(ec2_security_group_ids) ? "security_group_ids: #{ec2_security_group_ids}" : "" %>
+      tags: {"KubernetesCluster": "qe-shared-002"}
+<% else %>
+      <%= "image: #{image}" %>
+      <%= defined?(network_uuid) ? "networks: [{ 'uuid': #{network_uuid} }]" : "" %>
+      <%= "user_data: http://git.app.eng.bos.redhat.com/git/openshift-misc.git/plain/v3_non-vpn/root_and_sudo_sanity.yml" %>
+      <%= "instance_initiated_shutdown_behavior: terminate" %>
+      <%= defined?(vm_type) ? "flavor: #{vm_type}" : "" %>
+      <%= defined?(security_groups) ? "security_groups: [{ 'name': #{security_groups} }]" : "" %>
+<% end %>
+
+
+  list:
+  - num: 1
+    roles:
+    - master
+    - etcd
+  - num: 2
+    roles:
+    - node
+    - registry
+    - router
+  - num: <%= defined?(node_number)? "#{node_number}" : "1" %>
+    roles:
+    - node
+    - primary
+
+
+install_sequence:
+<% if defined?(openshift_master_default_subdomain) and openshift_master_default_subdomain.start_with?("fixed-") %>
+<%= "- type: force_domain" %>
+<%= "  name: #{openshift_master_default_subdomain.sub(/\.qe\.rhcloud\.com/, '')}" %>
+<% end %>
+- type: dns_hostnames
+- type: wildcard_dns
+<% if defined?(infra_lb_address) %>
+<%= "  ips: #{infra_lb_address.split(',')}" %>
+<% else %>
+<%= "  roles: ['router']" %>
+<% end %>
+  store_in: default_subdomain
+<% if defined?(openshift_master_default_subdomain) and openshift_master_default_subdomain.start_with?("fixed-") %>
+<%= "  overwrite: true" %>
+<% end %>
+- type: playbook
+  playbook: private-openshift-misc/v3-launch-templates/functionality-testing/aos-35/extra-ansible/pre_actions.yaml
+  inventory: http://git.app.eng.bos.redhat.com/git/openshift-misc.git/plain/v3-launch-templates/functionality-testing/inventory.openshift-ansible
+- type: playbook
+  playbook: private-openshift-ansible/playbooks/byo/config.yml
+  inventory: http://git.app.eng.bos.redhat.com/git/openshift-misc.git/plain/v3-launch-templates/functionality-testing/inventory.openshift-ansible
+  env:
+    <%= "ANSIBLE_LOOKUP_PLUGINS: #{ENV['WORKSPACE']}/private-openshift-ansible/lookup_plugins" %>
+    <%= "ANSIBLE_FILTER_PLUGINS: #{ENV['WORKSPACE']}/private-openshift-ansible/filter_plugins" %>
+    <%= "ANSIBLE_CALLBACK_PLUGINS: #{ENV['WORKSPACE']}/private-openshift-ansible/callback_plugins" %>
+- type: playbook 
+  playbook: private-openshift-misc/v3-launch-templates/functionality-testing/aos-35/extra-ansible/post_actions.yaml
+  inventory: http://git.app.eng.bos.redhat.com/git/openshift-misc.git/plain/v3-launch-templates/functionality-testing/inventory.openshift-ansible
