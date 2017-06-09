@@ -41,7 +41,7 @@ hosts:
     - node
     - registry
     - router
-  - num: <%= defined?(node_number)? "#{node_number}" : "1" %>
+  - num: 1
     roles:
     - node
     - primary
