@@ -1,4 +1,4 @@
-template: http://git.app.eng.bos.redhat.com/git/openshift-misc.git/plain/v3-launch-templates/functionality-testing/aos-35/hosts/hosts.3master_etcd+2infra_node+Nnode
+template: https://raw.githubusercontent.com/zhaozhanqi/env-template/master/hosts.1master_etcd%2B2infra_node%2BNnode
 
 
 rhel_roles:
